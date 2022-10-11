@@ -7,6 +7,7 @@ import subprocess as s
 import json
 import pandas as pd
 import convertapi
+from timetree_sdk import TimeTreeApi
 
 startTime = datetime.datetime.now()
 
@@ -28,6 +29,9 @@ username = creds["username"]
 token = creds['notion_token']
 convertapi.api_secret = creds["convertapi_token"]
 ca_db_id = creds['ca_db_id']
+timetree_token = creds['timetree_token']
+
+timetree = TimeTreeApi(timetree_token)
 
 headers = {
     'Authorization': f"Bearer {token}",
@@ -35,23 +39,41 @@ headers = {
     'Notion-Version': '2021-08-16'
 }
 
+def clean():
+    s.call(['rm', 'ca.xlsx'])
+    s.call(['rm', 'ca.xls'])
+
 def alreadyAdded(title, date):
     already_added_CAs = requests.post(f"{notion_api_databases}/{ca_db_id}/query", headers=headers)
     already_added_CAs = already_added_CAs.json()['results']
     for already_added_CA_title in already_added_CAs:
         alreadyAddedTitle = already_added_CA_title['properties']['Title']['title'][0]['text']['content']
-
+        alreadyAddedId = already_added_CA_title['id']
         alreadyAddedDate = already_added_CA_title['properties']['Day scheduled']['date']['start']
-        if title == alreadyAddedTitle and date == alreadyAddedDate:
-            return True
-    return False
+        if title == alreadyAddedTitle:
+            if date != alreadyAddedDate:
+                return alreadyAddedId
+            else:
+                return "Already added"
+    return "Not added"
 
 def notify(notification):
     print(f"\n{notification}")
     return s.call(['notify-send', 'ES CA Tool', notification])
 
 
-def postCA(title, subject, week, date):
+def postCATimetree(title, date):
+    event = timetree.create_event(title, date)
+    print(event)
+
+def deleteCATimetree(id):
+    timetree.delete_event(id)
+
+def deleteCANotion(id):
+    response = requests.delete(f"{notion_api_pages}/{id}", headers=headers)
+    print(response.json())
+
+def postCANotion(title, subject, week, date):
     data = {
         "parent": {"database_id": ca_db_id},
         "properties": {
@@ -102,16 +124,23 @@ def main():
         title = row['Common Assessment Schedule']
         week = row['Unnamed: 2']
         date = row['Unnamed: 3']
-        if alreadyAdded(title, date):
+        if alreadyAdded(title, date) == "Already added":
             print(f"Already added {title} on {date}")
-        elif type(subject) == str and subject != "Subject" and type(title) == str and type(week) == str and type(date) == str :
+        elif "-" in alreadyAdded(title, date):
+            print(f"Date changed for {title} to {date}")
+            deleteCANotion(alreadyAdded(title, date))
+            print(f"Subject: {subject} | Title: {title} | Week: {week} | Date: {date}")
+            postCANotion(title, subject, week, date)
+            count += 1
+        elif alreadyAdded(title, date) == "Not added" and type(subject) == str and subject != "Subject" and type(title) == str and type(week) == str and type(date) == str :
             if(date == "Still pending day allocation"):
                 print(f"CA {title} is still pending day allocation")
             else:
                 count +=1
                 print(f"Subject: {subject} | Title: {title} | Week: {week} | Date: {date}")
-                postCA(title, subject, week, date)
+                postCANotion(title, subject, week, date)
     notification = f"Done I added succesfully {count} Common Assesments to your Notion CA page!\nSo you can be organized!!!\nNow go start studying, Common Assesments are easy but you have to study for something in your life!!!\nTime taken to run is: {datetime.datetime.now() - startTime}"
     notify(notification)
+    clean()
 
 main()

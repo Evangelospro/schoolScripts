@@ -132,7 +132,7 @@ async def main():
                     print(
                         f"Homework Title: {title}, \nHomework Details: {homework_details}, \nTeacher: {teacher}, \nDue To: {due_to}, \nType: {homework_type}, \nSubmission Method: {submission_method} \nClass: {homework_class} \nHomework Details Image: {homework_details_images} \nExternal Medias: {external_medias}")
             await driver.goto(weduc_homework_url)
-            #Click ToDo Button
+            # Click ToDo Button
             await driver.click('//*[@id="homework-content"]/div/header/div[2]/div/button[2]')
         print(homeworks)
         await browser.close()
