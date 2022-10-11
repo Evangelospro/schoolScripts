@@ -1,3 +1,5 @@
 playwright
 pyfiglet
 bs4
+pandas
+convertapi

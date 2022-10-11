@@ -1,28 +1,29 @@
 # /usr/bin/python3.9
 
-import asyncio
-import re
+import requests
 import datetime
+import math
 import pyfiglet
 import subprocess as s
-from playwright.async_api import async_playwright
 import json
-import requests
-import time
 import pandas as pd
+import convertapi
 
 ascii_art = pyfiglet.figlet_format("CAs To Notion\nV 1.0")
 print(ascii_art)
 print(f"Current Time: {datetime.datetime.now().time()}")
 
 # Variables:
-ca_website = "https://ca.englishschool.ac.cy"
-Common_Assesment_URL = "https://ca.englishschool.ac.cy/student/assessments"
-creds = open("/home/evangelospro/.local/bin/CAsToNotion/creds.json", "r").read()
+ca_url = "https://exams.englishschool.ac.cy"
+login_url = f"{ca_url}/login_check"
+export_url = f"{ca_url}/student/assessments/export"
+print(login_url)
+creds = open("creds.json", "r").read()
 creds = json.loads(creds)
 password = creds["password"]
 username = creds["username"]
-token = creds['token']
+token = creds['notion_token']
+convertapi.api_secret = creds["convertapi_token"]
 already_added_CAs_titles = []
 startTime = datetime.datetime.now()
 notion_api_pages = "https://api.notion.com/v1/pages"
@@ -33,10 +34,8 @@ headers = {
     'Content-Type': 'application/json',
     'Notion-Version': '2021-08-16'
 }
-already_added_CAs = requests.post(f"{notion_api_databases}/{ca_db_id}/query",
-                                  headers=headers)
+already_added_CAs = requests.post(f"{notion_api_databases}/{ca_db_id}/query", headers=headers)
 already_added_CAs = already_added_CAs.json()
-login_button = "/html/body/div[2]/section/div[2]/div/div/form/div[5]/button"
 
 # Initialize
 
@@ -46,31 +45,27 @@ def notify(notification):
     return s.call(['notify-send', 'ES CA Tool', notification])
 
 
-async def main():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
-        driver = await browser.new_page()
-        await driver.goto(ca_website)
-        startup_notification = notify("Started scraping ES CA Tool!")
-        await driver.fill("input#username", username)
-        await driver.fill("input#password", password)
-        await driver.click('//*[@id="loginForm"]/div[5]/button')
-        await driver.goto(Common_Assesment_URL)
-        page_source = await driver.inner_html('div.col-sm-12')
-        await browser.close()
-    # page_source = driver.page_source
-    df_list = pd.read_html(page_source)
-    df = df_list[0]
-    # df = df.iloc[:, :-1]
-    for already_added_CA_title in already_added_CAs['results']:
-        already_added_CAs_titles.append(
-            already_added_CA_title['properties']['Title']['title'][0]['text']['content'])
-    for ca in df["Subject"].index:
-        if df["Title"][ca] not in already_added_CAs_titles and df["Day scheduled"][
-            ca] != "Still pending day allocation":
-            day_scheduled_formated = df["Day scheduled"][ca].split("-")
-            day_scheduled_formated = day_scheduled_formated[2] + "-" + day_scheduled_formated[1] + "-" + \
-                                     day_scheduled_formated[0]
+def main():
+    s = requests.Session()
+    user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36"
+    s.post(login_url, data={"_username": username, "_password": password, "_remember_me": ""}, headers={"User-Agent": user_agent})
+    export = s.get(export_url, headers={"User-Agent": user_agent})
+    open("ca.xls", "wb").write(export.content)
+    convertapi.convert('xlsx', {
+    'File': 'ca.xls'
+    }, from_format = 'xls').save_files('ca.xlsx')
+    df = pd.read_excel("ca.xlsx")
+    # for every row in the dataframe
+    count = 0
+    for index, row in df.iterrows():
+        subject = row['Unnamed: 0']
+        title = row['Common Assessment Schedule']
+        week = row['Unnamed: 2']
+        date = row['Unnamed: 3']
+        print(type(title), title)
+        if type(subject) == str and type(title) == str and type(week) == str and type(date) == str:
+            count +=1
+            print(f"Subject: {subject} | Title: {title} | Week: {week} | Date: {date}")
             CAs_to_post = {
                 "parent": {"database_id": ca_db_id},
                 "properties": {
@@ -78,25 +73,25 @@ async def main():
                         "title": [
                             {
                                 "text": {
-                                    "content": df["Title"][ca]
+                                    "content": title
                                 }
                             }
                         ]
                     },
                     "Subject": {
                         "select": {
-                            "name": df["Subject"][ca]
+                            "name": subject
                         }
                     },
                     "Day scheduled": {
                         "date": {
-                            "start": day_scheduled_formated,
+                            "start": date,
                             # "remind": "19"
                         }
                     },
                     "Week": {
                         "select": {
-                                "name":  df["Week"][ca]
+                                "name":  week
                             }
                     },
                 }
@@ -104,7 +99,7 @@ async def main():
             print(CAs_to_post)
             response = requests.post(notion_api_pages, headers=headers, json=CAs_to_post)
             print(response.json())
-    notification = f"Done I added succesfully {len(list(df))} Common Assesments to your Notion CA page!\nSo you can be organized!!!\nNow go start studying, Common Assesments are easy but you have to study for something in your life!!!\nTime taken to run is: {datetime.datetime.now() - startTime}"
-    notification = notify(notification)
+    notification = f"Done I added succesfully {count} Common Assesments to your Notion CA page!\nSo you can be organized!!!\nNow go start studying, Common Assesments are easy but you have to study for something in your life!!!\nTime taken to run is: {datetime.datetime.now() - startTime}"
+    notify(notification)
 
-asyncio.run(main())
+main()

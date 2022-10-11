@@ -16,7 +16,7 @@ print(ascii_art)
 print(f"Current Time: {datetime.datetime.now().time()}")
 
 # Variables:
-creds = open("/home/evangelospro/.local/bin/WeducToNotion/creds.json", "r").read()
+creds = open("creds.json", "r").read()
 creds = json.loads(creds)
 Password = creds["password"]
 Email = creds["email"]
