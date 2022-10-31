@@ -57,7 +57,7 @@ def diff_dates(due, current_date):
 
 def notify(notification):
     print(f"\n{notification}")
-    return s.call(['notify-send', 'Weduc To Notion V3', notification])
+    # return s.call(['notify-send', 'Weduc To Notion V3', notification])
 
 def deleteFromNotion(homework_id):
     response = requests.delete(f"{notion_api_pages}/{homework_id}",
@@ -137,6 +137,7 @@ async def collectHomeworks(driver):
     for homework in todo_homeworks:
         await driver.click(todo_homework)
         await driver.wait_for_load_state("networkidle")
+        time.sleep(2)
         title_handler = await homework.query_selector("h6")
         title = await title_handler.inner_html()
         deadline = await homework.query_selector("div.task-date")
@@ -185,7 +186,7 @@ async def collectHomeworks(driver):
 
 async def main():
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(headless=True)
         driver = await browser.new_page()
         await login(driver)
         notify("Started scraping Weduc!")
