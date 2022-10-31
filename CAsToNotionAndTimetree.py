@@ -8,6 +8,7 @@ import json
 import pandas as pd
 import convertapi
 from timetree_sdk import TimeTreeApi
+from timetree_sdk.models import EventRelationshipsLabelData, EventRelationshipsAttendeesData, EventRelationshipsLabel, EventRelationshipsAttendees, EventRelationships, EventAttributes, EventData, Event
 
 startTime = datetime.datetime.now()
 
@@ -30,8 +31,13 @@ token = creds['notion_token']
 convertapi.api_secret = creds["convertapi_token"]
 ca_db_id = creds['ca_db_id']
 timetree_token = creds['timetree_token']
+calendar_id = creds['timetree_calendar_id']
+user_id = creds['timetree_user_id']
 
 timetree = TimeTreeApi(timetree_token)
+
+already_added_CAs = requests.post(f"{notion_api_databases}/{ca_db_id}/query")
+already_added_CAs = already_added_CAs.json()['results']
 
 headers = {
     'Authorization': f"Bearer {token}",
@@ -44,8 +50,6 @@ def clean():
     s.call(['rm', 'ca.xls'])
 
 def alreadyAdded(title, date):
-    already_added_CAs = requests.post(f"{notion_api_databases}/{ca_db_id}/query", headers=headers)
-    already_added_CAs = already_added_CAs.json()['results']
     for already_added_CA_title in already_added_CAs:
         alreadyAddedTitle = already_added_CA_title['properties']['Title']['title'][0]['text']['content']
         alreadyAddedId = already_added_CA_title['id']
@@ -61,10 +65,43 @@ def notify(notification):
     print(f"\n{notification}")
     return s.call(['notify-send', 'ES CA Tool', notification])
 
-
 def postCATimetree(title, date):
-    event = timetree.create_event(title, date)
-    print(event)
+    title = title[:50]
+    my_id = timetree.get_calendar_members(calendar_id).data[0].id
+    print(my_id)
+    label_id = 1
+    print(label_id)
+    event = Event(
+    data=EventData(
+        attributes=EventAttributes(
+            title=title,
+            category='schedule',
+            all_day=True,
+            start_at=f'{date}T00:00:00.000Z',
+            end_at=f'{date}T00:00:00.000Z',
+            description='',
+            location='',
+            start_timezone='Asia/Nicosia',
+            end_timezone='Asia/Nicosia',
+        ),
+        relationships=EventRelationships(
+            label=EventRelationshipsLabel(
+                data=EventRelationshipsLabelData(
+                    id=label_id,
+                    type='label'
+                )
+            ),
+            attendees=EventRelationshipsAttendees(
+                data=[EventRelationshipsAttendeesData(
+                    id=my_id,
+                    type='user'
+                )]
+                )
+            )
+        )
+    )
+    response = timetree.create_event(calendar_id, event)
+    print(response)
 
 def deleteCATimetree(id):
     timetree.delete_event(id)
@@ -130,7 +167,8 @@ def main():
             print(f"Date changed for {title} to {date}")
             deleteCANotion(alreadyAdded(title, date))
             print(f"Subject: {subject} | Title: {title} | Week: {week} | Date: {date}")
-            postCANotion(title, subject, week, date)
+            # postCANotion(title, subject, week, date)
+            postCATimetree(title, date)
             count += 1
         elif alreadyAdded(title, date) == "Not added" and type(subject) == str and subject != "Subject" and type(title) == str and type(week) == str and type(date) == str :
             if(date == "Still pending day allocation"):
@@ -138,7 +176,8 @@ def main():
             else:
                 count +=1
                 print(f"Subject: {subject} | Title: {title} | Week: {week} | Date: {date}")
-                postCANotion(title, subject, week, date)
+                # postCANotion(title, subject, week, date)
+                postCATimetree(title, date)
     notification = f"Done I added succesfully {count} Common Assesments to your Notion CA page!\nSo you can be organized!!!\nNow go start studying, Common Assesments are easy but you have to study for something in your life!!!\nTime taken to run is: {datetime.datetime.now() - startTime}"
     notify(notification)
     clean()
